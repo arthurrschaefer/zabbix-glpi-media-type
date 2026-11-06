@@ -2,7 +2,7 @@ diff --git a/templates/media/glpi/README.md b/templates/media/glpi/README.md
 index b0786cd4..4c13628a 100644
 --- a/templates/media/glpi/README.md
 +++ b/templates/media/glpi/README.md
-@@ -17,13 +17,13 @@ This webhook creates tickets in the GLPI Assistance section. Created tickets hav
+@@ -17,13 +17,13 @@
  4 - High| High|
  5 - Disaster| Very high|
  
@@ -20,16 +20,15 @@ index b0786cd4..4c13628a 100644
  
  ## Requirements
  
-@@ -49,6 +49,8 @@ The configurable parameters are intended to be changed according to the webhook
+@@ -49,6 +49,7 @@
  |glpi_username|\<PLACE GLPI USERNAME\>|GLPI username.|
  |glpi_password|\<PLACE GLPI USER PASSWORD\>|GLPI user password.|
  |glpi_url|\<PLACE GLPI URL\>|URL of GLPI installation.|
 +|glpi_requester_id||GLPI user ID to set as the ticket requester (optional). If empty, the webhook user is used (detected via the API session).|
-+|glpi_debug||Set to `1` to report errors when setting the ticket requester as failed notifications in the action log (optional). If empty, such errors are only logged and the ticket is created without a requester. Use it for troubleshooting only: when the notification fails, the ticket ID is not stored in the problem tags, so later updates and the recovery of that problem are not sent to the ticket.|
  |glpi_urgency_autoregistration|Low|String value of GLPI urgency to assign to autoregistration event tickets.|
  |glpi_urgency_discovery|Low|String value of GLPI urgency to assign to discovery event tickets.|
  |glpi_urgency_internal|Low|String value of GLPI urgency to assign to internal event tickets.|
-@@ -103,7 +105,7 @@ Internal parameters are reserved for predefined macros that are not meant to be
+@@ -103,7 +104,7 @@
    - Go to *Administration* > *Profiles* and click the *Add* button on the top of the page.
    - Specify the profile name and set the *Profile's Interface* option to *Standard Interface*, and then click the *Add* button.
    - Open the created profile and click the *Assistance* tab.
@@ -38,22 +37,30 @@ index b0786cd4..4c13628a 100644
    - In the *Followups/Tasks* section, set the *Add (Requester)* permission for the *Followups* row.
    - Click the *Save* button.
  
-@@ -111,6 +113,8 @@ Internal parameters are reserved for predefined macros that are not meant to be
+@@ -111,6 +112,17 @@
  [![](images/thumb.5.png?raw=true)](images/5.png)
  [![](images/thumb.6.png?raw=true)](images/6.png)
  
-+> The *Assign* permission is required to set the ticket requester through RESTful API (V2): the webhook adds the requester as a ticket team member, which GLPI allows only for users who can assign tickets. Without it, tickets are created without a requester.
++> The minimum permissions on the *Tickets* row are:
++>
++> | Permission | Used for |
++> |---|---|
++> | *Create* | Creating the ticket. |
++> | *Update* | Updating the ticket on problem updates and resolve. |
++> | *See all tickets* | Reading tickets. To add the requester, GLPI needs read access to the ticket; *See my tickets* is also enough for that step. |
++> | *Assign* | Setting the requester through RESTful API (V2), on GLPI 11.0.8 and later. |
++>
++> The webhook adds the requester as a ticket team member with `POST /Assistance/Ticket/{id}/TeamMember`. GLPI checks *Assign* for every team role, including `requester`, and answers `403` without it. GLPI ignores requester fields sent with ticket creation or update through RESTful API (V2), so this permission cannot be avoided. Without it, the ticket is still created and the notification succeeds, but the ticket has no requester. *Assign* also lets the webhook user assign technicians, so give this profile only to the webhook user. REST API (V1) sets the requester at creation and does not need *Assign*.
 +
  4. Create a new [user](https://glpi-user-documentation.readthedocs.io/fr/latest/modules/administration/users/users.html):
    - Go to *Administration* > *Users* and click the *Add* button on the top of the page.
    - Specify the user login and set the *Authorization* > *Profile* option to the profile you created in the previous step (or any other existing profile with permissions to create tickets and followups).
-@@ -217,19 +221,40 @@ And the following for Zabbix events that do not have severities:
+@@ -217,19 +229,40 @@
  
  [![](images/thumb.10.png?raw=true)](images/10.png)
  
 +  Optionally, set the following parameters (for both API versions):
 +  - `glpi_requester_id` - ID of the GLPI user to set as the ticket requester. Leave it empty to use the webhook user.
-+  - `glpi_debug` - set to `1` to report errors when setting the ticket requester as failed notifications. Leave it empty in production.
 +
  5. Click the *Enabled* checkbox to enable the media type and click the *Update* button to save the webhook settings.
  
@@ -74,17 +81,18 @@ index b0786cd4..4c13628a 100644
 +    - *Recovery operations* - adds the solution.
 +    - *Update operations* - adds a followup. Without this block, problem updates are not sent to GLPI.
 +  - Click the *Update* button.
-+
+ 
 +[![](images/thumb.12.png?raw=true)](images/12.png)
 +
 +8. Done! You can now start using this media type in actions and create ticket items in GLPI.
- 
++
  For more information, please see [Zabbix](https://www.zabbix.com/documentation/7.4/manual/config/notifications) and [GLPI](https://glpi-user-documentation.readthedocs.io/fr/latest/) documentation.
  
 +## Troubleshooting
 +
 +- **Problem updates are not added as followups.** Make sure the action has *Update operations* via the *GLPI* media type and that its recipient is not the user who updates the problem (see steps 6 and 7).
-+- **Tickets are created without a requester.** Check that the profile of the GLPI webhook user has the *Assign* permission (RESTful API V2). With RESTful API V2, the result is stored in the `__zbx_glpi_requester` event tag (`ok:<user ID>` or `error: <reason>`); set `glpi_debug` to `1` to see the error in *Reports* > *Action log*.
++- **Tickets are created without a requester.** Check that the profile of the GLPI webhook user has the *Assign* permission (RESTful API V2). A failure to set the requester does not fail the notification. With RESTful API V2, the result is stored in the `__zbx_glpi_requester` event tag (`ok:<user ID>`, `error: <reason>`, or `resolve-error: <reason>`), and the reason is written as a warning in the media type log (use *Test* > *Open log*).
++- **`HTTP 403` when adding the requester, although the profile has *Assign*.** The API session uses the default profile of the webhook user. If the user has several authorizations (for example, *Self-Service* granted automatically), set this profile as the default one or remove the others.
 +- Errors returned by GLPI are reported as `HTTP <code>: <message>` in the action log.
 +
  ## Feedback
@@ -126,14 +134,7 @@ diff --git a/templates/media/glpi/media_glpi.yaml b/templates/media/glpi/media_g
 index 414a8895..8859a630 100644
 --- a/templates/media/glpi/media_glpi.yaml
 +++ b/templates/media/glpi/media_glpi.yaml
-@@ -29,12 +29,14 @@ zabbix_export:
-           value: '<PLACE GLPI CLIENT ID>'
-         - name: glpi_client_secret
-           value: '<PLACE GLPI CLIENT SECRET>'
-+        - name: glpi_debug
-         - name: glpi_legacy_api
-           value: 'false'
-         - name: glpi_password
+@@ -35,6 +35,7 @@
            value: '<PLACE GLPI USER PASSWORD>'
          - name: glpi_problem_id
            value: '{EVENT.TAGS.__zbx_glpi_problem_id}'
@@ -141,7 +142,7 @@ index 414a8895..8859a630 100644
          - name: glpi_urgency_autoregistration
            value: Low
          - name: glpi_urgency_discovery
-@@ -571,6 +573,12 @@ zabbix_export:
+@@ -571,6 +572,12 @@
          		content: this.params.alert_message + '<br> <a href=' + this.params.zabbix_url + '>Link to problem in Zabbix</a>',
          	};
          
@@ -154,7 +155,7 @@ index 414a8895..8859a630 100644
          	this.result = { tags: {} };
          }
          
-@@ -596,12 +604,17 @@ zabbix_export:
+@@ -596,12 +603,17 @@
          	if (status !== 200 && status !== 201) {
          		Logger.log(Logger.INFO, 'HTTP code: ' + status);
          
@@ -177,7 +178,7 @@ index 414a8895..8859a630 100644
          	}
          }
          
-@@ -650,9 +663,34 @@ zabbix_export:
+@@ -650,10 +662,35 @@
          		this.request.addHeaders('Authorization: Bearer ' + this.params.authToken);
          	}
          
@@ -209,12 +210,13 @@ index 414a8895..8859a630 100644
 +        	else {
 +        		response = {};
 +        	}
-+        
-+        	checkResponseStatus(status, response);
          
++        	checkResponseStatus(status, response);
++        
          	return response;
          }
-@@ -661,10 +699,22 @@ zabbix_export:
+         
+@@ -661,10 +698,22 @@
          	this.data.urgency = this.urgency;
          	this.data.content = this.params.alert_message + '<br> <a href=' + this.params.zabbix_url + '>Link to problem in Zabbix</a>';
          
@@ -237,7 +239,7 @@ index 414a8895..8859a630 100644
          	var api = this.params.glpi_legacy_api ?
          		{url: LEGACY_ENDPOINT + '/Ticket/', data: wrapInput(this.data)} :
          		{url: CURRENT_ENDPOINT + '/Assistance/Ticket/', data: this.data};
-@@ -675,32 +725,93 @@ zabbix_export:
+@@ -675,34 +724,89 @@
          		throw 'Cannot create GPLi ticket. Check debug log for more information.';
          	}
          
@@ -257,15 +259,31 @@ index 414a8895..8859a630 100644
          
 -        	if (CParamValidator.isDefined(status)) {
 -        		this.data.status = status;
+-        	}
 +        	fields.id = this.params.glpi_problem_id;
-+        
+         
+-        	var api = this.params.glpi_legacy_api ? {
+-        		url: LEGACY_ENDPOINT + '/Ticket/' + encodeURIComponent(this.params.glpi_problem_id),
+-        		url2: LEGACY_ENDPOINT + '/Ticket/' + encodeURIComponent(this.params.glpi_problem_id) + '/ITILFollowup',
+-        		data: wrapInput(this.data),
+-        		dataFollowup: wrapInput(this.dataFollowup)
+-        	} : {
+-        		url: CURRENT_ENDPOINT + '/Assistance/Ticket/' + encodeURIComponent(this.params.glpi_problem_id),
+-        		url2: CURRENT_ENDPOINT + '/Assistance/Ticket/' + encodeURIComponent(this.params.glpi_problem_id) + '/Timeline/Followup',
+-        		data: this.data,
+-        		dataFollowup: this.dataFollowup
+-        	};
+-        
+-        	api.data.id = this.params.glpi_problem_id;
 +        	var url = this.params.glpi_legacy_api
 +        		? LEGACY_ENDPOINT + '/Ticket/' + encodeURIComponent(this.params.glpi_problem_id)
 +        		: CURRENT_ENDPOINT + '/Assistance/Ticket/' + encodeURIComponent(this.params.glpi_problem_id);
-+        
+         
+-        	this.sendRequest('patch', api.url, api.data);
+-        	this.sendRequest('post', api.url2, api.dataFollowup);
 +        	this.sendRequest('patch', url, this.params.glpi_legacy_api ? wrapInput(fields) : fields);
-+        }
-+        
+         }
+         
 +        GLPI.prototype.addFollowup = function () {
 +        	var url = this.params.glpi_legacy_api
 +        		? LEGACY_ENDPOINT + '/Ticket/' + encodeURIComponent(this.params.glpi_problem_id) + '/ITILFollowup'
@@ -293,45 +311,28 @@ index 414a8895..8859a630 100644
 +        		&& CParamValidator.ifMatch(String(this.params.glpi_requester_id), '^[0-9]+$')
 +        		&& parseInt(this.params.glpi_requester_id, 10) > 0) {
 +        		return parseInt(this.params.glpi_requester_id, 10);
-         	}
-         
--        	var api = this.params.glpi_legacy_api ? {
--        		url: LEGACY_ENDPOINT + '/Ticket/' + encodeURIComponent(this.params.glpi_problem_id),
--        		url2: LEGACY_ENDPOINT + '/Ticket/' + encodeURIComponent(this.params.glpi_problem_id) + '/ITILFollowup',
--        		data: wrapInput(this.data),
--        		dataFollowup: wrapInput(this.dataFollowup)
--        	} : {
--        		url: CURRENT_ENDPOINT + '/Assistance/Ticket/' + encodeURIComponent(this.params.glpi_problem_id),
--        		url2: CURRENT_ENDPOINT + '/Assistance/Ticket/' + encodeURIComponent(this.params.glpi_problem_id) + '/Timeline/Followup',
--        		data: this.data,
--        		dataFollowup: this.dataFollowup
--        	};
++        	}
++        
 +        	try {
 +        		if (this.params.glpi_legacy_api) {
 +        			var s = this.sendRequest('get', LEGACY_ENDPOINT + '/getFullSession');
 +        			var lid = (s && s.session) ? parseInt(s.session.glpiID, 10) : 0;
 +        			return lid > 0 ? lid : null;
 +        		}
-         
--        	api.data.id = this.params.glpi_problem_id;
++        
 +        		var r = this.sendRequest('get', CURRENT_ENDPOINT + '/session');
 +        		var uid = r ? parseInt(r.user_id, 10) : 0;
 +        		return uid > 0 ? uid : null;
 +        	} catch (error) {
 +        		this.result.tags.__zbx_glpi_requester = 'resolve-error: ' + error;
 +        		Logger.log(Logger.WARN, 'Could not resolve default requester: ' + error);
-+        		if (this.params.glpi_debug === '1' || this.params.glpi_debug === 'true') {
-+        			throw 'Requester resolution failed: ' + error;
-+        		}
 +        		return null;
 +        	}
 +        }
-         
--        	this.sendRequest('patch', api.url, api.data);
--        	this.sendRequest('post', api.url2, api.dataFollowup);
++        
 +        // API v2 only: attach the requester as a team member after ticket creation.
-+        // Records the outcome in the __zbx_glpi_requester event tag; with
-+        // glpi_debug=1 a failure is thrown so it shows as Failed in the action log.
++        // Records the outcome in the __zbx_glpi_requester event tag. A failure is never
++        // thrown: the ticket exists, and failing the notification would lose its ID tag.
 +        GLPI.prototype.addRequester = function (ticketId, userId) {
 +        	try {
 +        		this.sendRequest('post',
@@ -341,14 +342,13 @@ index 414a8895..8859a630 100644
 +        	} catch (error) {
 +        		this.result.tags.__zbx_glpi_requester = 'error: ' + error;
 +        		Logger.log(Logger.WARN, 'Could not add requester to ticket ' + ticketId + ': ' + error);
-+        		if (this.params.glpi_debug === '1' || this.params.glpi_debug === 'true') {
-+        			throw 'Requester add failed (ticket ' + ticketId + '): ' + error;
-+        		}
 +        	}
-         }
-         
++        }
++        
          GLPI.prototype.onProblem = function (alert) {
-@@ -715,14 +826,20 @@ zabbix_export:
+         	Logger.log(Logger.INFO, 'Source: ' + alert.source + '; Event: ' + alert.event);
+         	const problem_id = this.createProblem(1)
+@@ -715,14 +819,20 @@
          
          GLPI.prototype.onUpdate = function (alert) {
          	Logger.log(Logger.INFO, 'Source: ' + alert.source + '; Event: ' + alert.event);
@@ -371,22 +371,21 @@ index 414a8895..8859a630 100644
          
          	return this.result;
          }
-@@ -775,7 +892,7 @@ zabbix_export:
+@@ -775,7 +885,7 @@
          - Go to "Administration" → "Profiles" and click the "Add" button on the top of the page.
          - Specify the profile name and set the "Profile's Interface" option to "Standard Interface", and then click the "Add" button.
          - Open the created profile and click the "Assistance" tab.
 -        - In the "Tickets" section, set the "Update", "Create", and "See all tickets" permissions.
-+        - In the "Tickets" section, set the "Update", "Create", "See all tickets", and "Assign" permissions ("Assign" is required to set the ticket requester through API V2).
++        - In the "Tickets" section, set the "Update", "Create", "See all tickets", and "Assign" permissions ("Assign" is required to set the ticket requester through API V2 on GLPI 11.0.8 and later).
          - In the "Followups/Tasks" section, set the "Add (Requester)" permission for the "Followups" row.
          - Click the "Save" button.
          
-@@ -842,14 +959,23 @@ zabbix_export:
+@@ -842,15 +952,23 @@
          - glpi_app_token - if you've opted to use an application token during the creation of API client, specify it here; otherwise leave it empty
          - glpi_user_token - the user token that was generated during creation of GLPI user
          
 +        Optional parameters:
 +        - glpi_requester_id - GLPI user ID to set as the ticket requester; leave empty to use the webhook user
-+        - glpi_debug - set to 1 to report requester errors as failed notifications in the action log; leave empty in production
 +        
          3. Click the "Enabled" checkbox to enable the media type and click the "Update" button to save the webhook settings.
          
@@ -396,13 +395,14 @@ index 414a8895..8859a630 100644
          - In the "Media" tab, click "Add" and select the type "GLPI" from the drop-down list. Add any value in the "Send to" field: it is not used in the webhook, but is required.
          - Make sure this user has access to all hosts for which you would like problem notifications to be sent to GLPI.
 +        - Use a user that is not used to update problems: Zabbix does not send update notifications to the user who performed the update, so updates made by the only recipient would never reach GLPI.
-+        
+         
+-        5. Done! You can now start using this media type in actions and create ticket items in GLPI.
 +        5. Configure the action:
 +        - In the "Alerts" → "Actions" → "Trigger actions" section, open or create the action.
 +        - In the "Operations" tab, add a "Send message" operation to the user created in the previous step (or a user group that contains it) via the GLPI media type in each block: "Operations" (creates the ticket), "Recovery operations" (adds the solution) and "Update operations" (adds a followup).
          
--        5. Done! You can now start using this media type in actions and create ticket items in GLPI.
 +        6. Done! You can now start using this media type in actions and create ticket items in GLPI.
-         
++        
          You can find the latest version of this media and additional information in the official Zabbix repository:
          https://git.zabbix.com/projects/ZBX/repos/zabbix/browse/templates/media/glpi
+       message_templates:

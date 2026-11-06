@@ -50,7 +50,6 @@ The configurable parameters are intended to be changed according to the webhook 
 |glpi_password|\<PLACE GLPI USER PASSWORD\>|GLPI user password.|
 |glpi_url|\<PLACE GLPI URL\>|URL of GLPI installation.|
 |glpi_requester_id||GLPI user ID to set as the ticket requester (optional). If empty, the webhook user is used (detected via the API session).|
-|glpi_debug||Set to `1` to report errors when setting the ticket requester as failed notifications in the action log (optional). If empty, such errors are only logged and the ticket is created without a requester. Use it for troubleshooting only: when the notification fails, the ticket ID is not stored in the problem tags, so later updates and the recovery of that problem are not sent to the ticket.|
 |glpi_urgency_autoregistration|Low|String value of GLPI urgency to assign to autoregistration event tickets.|
 |glpi_urgency_discovery|Low|String value of GLPI urgency to assign to discovery event tickets.|
 |glpi_urgency_internal|Low|String value of GLPI urgency to assign to internal event tickets.|
@@ -113,7 +112,16 @@ Internal parameters are reserved for predefined macros that are not meant to be 
 [![](images/thumb.5.png?raw=true)](images/5.png)
 [![](images/thumb.6.png?raw=true)](images/6.png)
 
-> The *Assign* permission is required to set the ticket requester through RESTful API (V2): the webhook adds the requester as a ticket team member, which GLPI allows only for users who can assign tickets. Without it, tickets are created without a requester.
+> The minimum permissions on the *Tickets* row are:
+>
+> | Permission | Used for |
+> |---|---|
+> | *Create* | Creating the ticket. |
+> | *Update* | Updating the ticket on problem updates and resolve. |
+> | *See all tickets* | Reading tickets. To add the requester, GLPI needs read access to the ticket; *See my tickets* is also enough for that step. |
+> | *Assign* | Setting the requester through RESTful API (V2), on GLPI 11.0.8 and later. |
+>
+> The webhook adds the requester as a ticket team member with `POST /Assistance/Ticket/{id}/TeamMember`. GLPI checks *Assign* for every team role, including `requester`, and answers `403` without it. GLPI ignores requester fields sent with ticket creation or update through RESTful API (V2), so this permission cannot be avoided. Without it, the ticket is still created and the notification succeeds, but the ticket has no requester. *Assign* also lets the webhook user assign technicians, so give this profile only to the webhook user. REST API (V1) sets the requester at creation and does not need *Assign*.
 
 4. Create a new [user](https://glpi-user-documentation.readthedocs.io/fr/latest/modules/administration/users/users.html):
   - Go to *Administration* > *Users* and click the *Add* button on the top of the page.
@@ -223,7 +231,6 @@ And the following for Zabbix events that do not have severities:
 
   Optionally, set the following parameters (for both API versions):
   - `glpi_requester_id` - ID of the GLPI user to set as the ticket requester. Leave it empty to use the webhook user.
-  - `glpi_debug` - set to `1` to report errors when setting the ticket requester as failed notifications. Leave it empty in production.
 
 5. Click the *Enabled* checkbox to enable the media type and click the *Update* button to save the webhook settings.
 
@@ -252,7 +259,8 @@ For more information, please see [Zabbix](https://www.zabbix.com/documentation/7
 ## Troubleshooting
 
 - **Problem updates are not added as followups.** Make sure the action has *Update operations* via the *GLPI* media type and that its recipient is not the user who updates the problem (see steps 6 and 7).
-- **Tickets are created without a requester.** Check that the profile of the GLPI webhook user has the *Assign* permission (RESTful API V2). With RESTful API V2, the result is stored in the `__zbx_glpi_requester` event tag (`ok:<user ID>` or `error: <reason>`); set `glpi_debug` to `1` to see the error in *Reports* > *Action log*.
+- **Tickets are created without a requester.** Check that the profile of the GLPI webhook user has the *Assign* permission (RESTful API V2). A failure to set the requester does not fail the notification. With RESTful API V2, the result is stored in the `__zbx_glpi_requester` event tag (`ok:<user ID>`, `error: <reason>`, or `resolve-error: <reason>`), and the reason is written as a warning in the media type log (use *Test* > *Open log*).
+- **`HTTP 403` when adding the requester, although the profile has *Assign*.** The API session uses the default profile of the webhook user. If the user has several authorizations (for example, *Self-Service* granted automatically), set this profile as the default one or remove the others.
 - Errors returned by GLPI are reported as `HTTP <code>: <message>` in the action log.
 
 ## Feedback

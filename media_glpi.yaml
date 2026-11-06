@@ -29,7 +29,6 @@ zabbix_export:
           value: '<PLACE GLPI CLIENT ID>'
         - name: glpi_client_secret
           value: '<PLACE GLPI CLIENT SECRET>'
-        - name: glpi_debug
         - name: glpi_legacy_api
           value: 'false'
         - name: glpi_password
@@ -789,16 +788,13 @@ zabbix_export:
         	} catch (error) {
         		this.result.tags.__zbx_glpi_requester = 'resolve-error: ' + error;
         		Logger.log(Logger.WARN, 'Could not resolve default requester: ' + error);
-        		if (this.params.glpi_debug === '1' || this.params.glpi_debug === 'true') {
-        			throw 'Requester resolution failed: ' + error;
-        		}
         		return null;
         	}
         }
         
         // API v2 only: attach the requester as a team member after ticket creation.
-        // Records the outcome in the __zbx_glpi_requester event tag; with
-        // glpi_debug=1 a failure is thrown so it shows as Failed in the action log.
+        // Records the outcome in the __zbx_glpi_requester event tag. A failure is never
+        // thrown: the ticket exists, and failing the notification would lose its ID tag.
         GLPI.prototype.addRequester = function (ticketId, userId) {
         	try {
         		this.sendRequest('post',
@@ -808,9 +804,6 @@ zabbix_export:
         	} catch (error) {
         		this.result.tags.__zbx_glpi_requester = 'error: ' + error;
         		Logger.log(Logger.WARN, 'Could not add requester to ticket ' + ticketId + ': ' + error);
-        		if (this.params.glpi_debug === '1' || this.params.glpi_debug === 'true') {
-        			throw 'Requester add failed (ticket ' + ticketId + '): ' + error;
-        		}
         	}
         }
         
@@ -892,7 +885,7 @@ zabbix_export:
         - Go to "Administration" → "Profiles" and click the "Add" button on the top of the page.
         - Specify the profile name and set the "Profile's Interface" option to "Standard Interface", and then click the "Add" button.
         - Open the created profile and click the "Assistance" tab.
-        - In the "Tickets" section, set the "Update", "Create", "See all tickets", and "Assign" permissions ("Assign" is required to set the ticket requester through API V2).
+        - In the "Tickets" section, set the "Update", "Create", "See all tickets", and "Assign" permissions ("Assign" is required to set the ticket requester through API V2 on GLPI 11.0.8 and later).
         - In the "Followups/Tasks" section, set the "Add (Requester)" permission for the "Followups" row.
         - Click the "Save" button.
         
@@ -961,7 +954,6 @@ zabbix_export:
         
         Optional parameters:
         - glpi_requester_id - GLPI user ID to set as the ticket requester; leave empty to use the webhook user
-        - glpi_debug - set to 1 to report requester errors as failed notifications in the action log; leave empty in production
         
         3. Click the "Enabled" checkbox to enable the media type and click the "Update" button to save the webhook settings.
         
