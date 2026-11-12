@@ -83,6 +83,7 @@ The administrator can choose the following options:
 |`tls_verify` (global macro `{$HTTP.TLS.VERIFY:"GLPI"}`)|Full certificate verification. A `http://` GLPI URL is rejected.|`peer` skips the host name check. `none` disables verification.|Use `none` only for labs or self-signed certificates.|
 |`severity_*` and `glpi_urgency_*`|Default mapping from Zabbix severity to GLPI urgency (see the table above).|One of `Very low`, `Low`, `Medium`, `High`, `Very high`.|Any other value makes the notification fail.|
 |`http_proxy` (add it as a new parameter)|Direct connection to GLPI.|Proxy URL.|All requests to GLPI go through the proxy.|
+|Recipient of the action in Zabbix|A dedicated Zabbix user that nobody uses to update problems.|Sending to a user who also acknowledges, comments on, or changes the severity of problems.|Zabbix does not send update notifications to the user who made the update, even if that user has GLPI media. If that user is the only recipient, those updates never reach GLPI as followups. Being logged in does not matter: only who made the update. See step 6 and *Troubleshooting*.|
 
 ### Internal parameters
 
