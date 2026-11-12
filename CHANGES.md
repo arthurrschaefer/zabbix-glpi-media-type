@@ -26,7 +26,7 @@ Tested on Zabbix 7.4.15 with GLPI 11.0.10 (API V2 and V1) and GLPI 12.0.0-rc3 (A
   - API V1: set in the ticket creation request.
   - API V2: added right after creation (`POST /Assistance/Ticket/{id}/TeamMember`), because the V2 ticket creation has no requester field.
 - **Why:** tickets without a requester are harder to route, notify and report on in GLPI.
-- **Note:** with API V2, GLPI requires the **Assign** ticket permission for this (otherwise it answers 403). Setting the requester never blocks ticket creation; the result is stored in the `__zbx_glpi_requester` event tag (V2), and the new `glpi_debug` parameter makes a failure visible in the action log.
+- **Note:** with API V2, GLPI 11.0.8 and later (including 12) require the **Assign** ticket permission for this, for every team role, and answer 403 without it. Earlier versions did not check rights on this route. Setting the requester never fails the notification: the ticket is kept, its ID tag is stored, and the reason is written to the `__zbx_glpi_requester` event tag (V2) and the media type log.
 
 ### 4. Readable GLPI errors
 
@@ -48,11 +48,10 @@ The ticket description ends with `Zabbix event: <event ID>`, to trace the ticket
 | Name | Purpose |
 |------|---------|
 | `glpi_requester_id` | GLPI user ID to set as the requester. Empty = the webhook user. |
-| `glpi_debug` | `1` = a failure to set the requester fails the notification, so it shows in *Reports > Action log*. For troubleshooting only. |
 
 ## Changes to the manual (README)
 
-- **GLPI profile (API V2):** add the *Assign* ticket permission (needed for the requester).
+- **GLPI profile (API V2):** add the *Assign* ticket permission (needed for the requester), and list the minimum ticket permissions and what each one is for.
 - **Zabbix user:** use a dedicated user as the recipient of the GLPI media. Zabbix does not send update notifications to the user who made the update, so if the person commenting on problems is the only recipient, updates never reach GLPI.
 - **Action:** new step — the action must have *Operations*, *Recovery operations* **and** *Update operations* via the GLPI media type. Without *Update operations*, problem updates are not sent to GLPI.
 - Parameters table, behavior description and a short troubleshooting section updated accordingly. The same text was updated in the media type's built-in description.
