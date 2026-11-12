@@ -49,7 +49,7 @@ The configurable parameters are intended to be changed according to the webhook 
 |glpi_username|\<PLACE GLPI USERNAME\>|GLPI username.|
 |glpi_password|\<PLACE GLPI USER PASSWORD\>|GLPI user password.|
 |glpi_url|\<PLACE GLPI URL\>|URL of GLPI installation.|
-|glpi_requester_id||GLPI user ID to set as the ticket requester (optional). If empty, the webhook user is used (detected via the API session).|
+|glpi_requester_id||GLPI user ID to set as the ticket requester (optional). If empty or not a number, the integration (webhook) user is used (detected via the API session).|
 |glpi_urgency_autoregistration|Low|String value of GLPI urgency to assign to autoregistration event tickets.|
 |glpi_urgency_discovery|Low|String value of GLPI urgency to assign to discovery event tickets.|
 |glpi_urgency_internal|Low|String value of GLPI urgency to assign to internal event tickets.|
@@ -59,6 +59,30 @@ The configurable parameters are intended to be changed according to the webhook 
 |severity_average|Medium|GLPI urgency to assign to tickets when event has Zabbix severity "Average".|
 |severity_high|High|GLPI urgency to assign to tickets when event has Zabbix severity "High".|
 |severity_disaster|Very high|GLPI urgency to assign to tickets when event has Zabbix severity "Disaster".|
+
+### What to set and what is optional
+
+Every installation must set `glpi_url` and choose the API with `glpi_legacy_api`. The API choice decides which credential parameters the webhook reads. The parameters of the other API are ignored, so their placeholders can stay as they are.
+
+|API|`glpi_legacy_api`|Required parameters|Ignored parameters|
+|---|---|---|---|
+|RESTful API (V2) with OAuth2, GLPI 11+ (recommended)|`false`|`glpi_url`, `glpi_client_id`, `glpi_client_secret`, `glpi_username`, `glpi_password`|`glpi_user_token`, `glpi_app_token`|
+|REST API (V1), legacy, GLPI 10|`true`|`glpi_url`, `glpi_user_token`|`glpi_client_id`, `glpi_client_secret`, `glpi_username`, `glpi_password`|
+
+The global macro `{$ZABBIX.URL}` is also required. The webhook uses it for the link back to the Zabbix problem in the ticket.
+
+The integration user is the GLPI account whose credentials the webhook uses (`glpi_username` with V2, the owner of `glpi_user_token` with V1).
+
+The administrator can choose the following options:
+
+|Option|Default behavior|If changed|Implications|
+|---|---|---|---|
+|`glpi_requester_id`|Empty: the integration user is set as the ticket requester.|A numeric GLPI user ID: that user is set as the requester instead.|A value that is not a positive number, such as a leftover placeholder, is treated as empty. With V2, setting any requester needs the *Assign* right on the integration user's profile.|
+|*Assign* right on the integration user's profile (V2 only)|Without it, the ticket is created without a requester. The notification still succeeds, and the reason is stored in the `__zbx_glpi_requester` tag and in the media type log.|With it, the requester is set and the tag shows `ok:<user ID>`.|*Assign* also lets the integration user assign technicians, so give this profile only to that user.|
+|`glpi_app_token` (V1 only)|Empty: no application token is sent.|Set it only if the GLPI API client has an application token.|A wrong value or a leftover placeholder makes V1 authentication fail.|
+|`tls_verify` (global macro `{$HTTP.TLS.VERIFY:"GLPI"}`)|Full certificate verification. A `http://` GLPI URL is rejected.|`peer` skips the host name check. `none` disables verification.|Use `none` only for labs or self-signed certificates.|
+|`severity_*` and `glpi_urgency_*`|Default mapping from Zabbix severity to GLPI urgency (see the table above).|One of `Very low`, `Low`, `Medium`, `High`, `Very high`.|Any other value makes the notification fail.|
+|`http_proxy` (add it as a new parameter)|Direct connection to GLPI.|Proxy URL.|All requests to GLPI go through the proxy.|
 
 ### Internal parameters
 
@@ -230,7 +254,7 @@ And the following for Zabbix events that do not have severities:
 [![](images/thumb.10.png?raw=true)](images/10.png)
 
   Optionally, set the following parameters (for both API versions):
-  - `glpi_requester_id` - ID of the GLPI user to set as the ticket requester. Leave it empty to use the webhook user.
+  - `glpi_requester_id` - ID of the GLPI user to set as the ticket requester. Leave it empty to use the integration user (the GLPI account whose credentials are set above). See [What to set and what is optional](#what-to-set-and-what-is-optional) for the implications.
 
 5. Click the *Enabled* checkbox to enable the media type and click the *Update* button to save the webhook settings.
 
